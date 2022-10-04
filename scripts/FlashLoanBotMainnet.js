@@ -1,11 +1,10 @@
-const Web3 = require('web3')
+
 const { ethers, BigNumber } = require('ethers')
 const HDWalletProvider = require('@truffle/hdwallet-provider');
 const fs = require('fs');
 const pk = fs.readFileSync("../.secret").toString().trim();
-const provider = new ethers.providers.JsonRpcProvider("https://mainnet.infura.io/v3/e3c2bd4db1a44d10a15b0b2dcbefa772");
+const provider = new ethers.providers.JsonRpcProvider("https://mainnet.infura.io/v3/<YOUR_KEY_GOES_HERE>");
 const signer = new ethers.Wallet(pk, provider)
-const constantshere = require('../abi/constants');
 const { default: axios } = require('axios');
 const uniswapRouterV2Main = '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D';
 const uniswapRouterV2ABI = [
@@ -303,25 +302,24 @@ const flashLoanContractABI = [
 const uniswapRouterV2 = new ethers.Contract(uniswapRouterV2Main, uniswapRouterV2ABI, signer);
 const flashLoanContract = new ethers.Contract(flashLoanContractAddress, flashLoanContractABI, signer);
 module.exports = async function (callback) {
-    var tokensArray = null;
     const tokensListRaw = await axios.get('https://token-list.sushi.com').then(result => {
-        tokensArray = result.data.tokens;
+        return( result.data.tokens );
     })
-    const flashAsset = tokensArray.filter(obj=> {
+    const flashAsset = tokensListRaw.filter(obj=> {
         return obj.symbol === "DAI";
     })
     console.log(flashAsset[0].decimals)
-    // console.log(tokensArray[0])
     const WETH = await uniswapRouterV2.WETH();
     const amt = 10;
     const amtToSwap = ethers.utils.parseUnits(amt.toString(), flashAsset[0].decimals)
+
     async function main() {
-        // for (var ix = 0; ix < tokensArray.length; ix++) {
-        for (var ix = 0; ix < tokensArray.length; ix++) {
-            await strategy1(tokensArray[ix]);
+        for (var ix = 0; ix < tokensListRaw.length; ix++) {
+            await strategy1(tokensListRaw[ix]);
         }
         // callback();
     }
+
     async function strategy1(_token2) {
         const getAmountsOut = await uniswapRouterV2.getAmountsOut(amtToSwap, [flashAsset[0].address, _token2.address]);
         console.log('Swap 1 Received: ', ethers.utils.formatEther(getAmountsOut[1].toString()));
@@ -330,14 +328,15 @@ module.exports = async function (callback) {
         console.log('Swap 2 Received: ', ethers.utils.formatEther(getAmountsOut2[1].toString()));
         const getAmountsOut3 = await uniswapRouterV2.getAmountsOut(getAmountsOut2[1], [WETH, "0xFf795577d9AC8bD7D90Ee22b6C1703490b6512FD"])
         console.log('Swap 3 Received: ', ethers.utils.formatEther(getAmountsOut3[1].toString()));
-        // TODO: Include gas prices in profitable equation.
 
+        // TODO: Include gas prices in profitable equation.
         const profitable = amt < ethers.utils.formatEther(getAmountsOut3[1].toString());
         console.log("Profitable?: ", profitable);
         if (profitable) {
             await swapFunc("0xFf795577d9AC8bD7D90Ee22b6C1703490b6512FD", _token2, WETH, amtToSwap)
         }
     }
+
     async function swapFunc(_arg1, _arg2, _arg3, _arg4) {
         console.log('running swap func......')
         try {
