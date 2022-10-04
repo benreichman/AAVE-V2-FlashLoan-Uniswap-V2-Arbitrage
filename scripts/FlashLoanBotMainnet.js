@@ -303,9 +303,9 @@ const uniswapRouterV2 = new ethers.Contract(uniswapRouterV2Main, uniswapRouterV2
 const flashLoanContract = new ethers.Contract(flashLoanContractAddress, flashLoanContractABI, signer);
 module.exports = async function (callback) {
     const tokensListRaw = await axios.get('https://token-list.sushi.com').then(result => {
-        return( result.data.tokens );
+        return (result.data.tokens);
     })
-    const flashAsset = tokensListRaw.filter(obj=> {
+    const flashAsset = tokensListRaw.filter(obj => {
         return obj.symbol === "DAI";
     })
     console.log(flashAsset[0].decimals)
@@ -321,35 +321,48 @@ module.exports = async function (callback) {
     }
 
     async function strategy1(_token2) {
-        const getAmountsOut = await uniswapRouterV2.getAmountsOut(amtToSwap, [flashAsset[0].address, _token2.address]);
-        console.log('Swap 1 Received: ', ethers.utils.formatEther(getAmountsOut[1].toString()));
-        callback()
-        const getAmountsOut2 = await uniswapRouterV2.getAmountsOut(getAmountsOut[1], [_token2, WETH])
-        console.log('Swap 2 Received: ', ethers.utils.formatEther(getAmountsOut2[1].toString()));
-        const getAmountsOut3 = await uniswapRouterV2.getAmountsOut(getAmountsOut2[1], [WETH, "0xFf795577d9AC8bD7D90Ee22b6C1703490b6512FD"])
-        console.log('Swap 3 Received: ', ethers.utils.formatEther(getAmountsOut3[1].toString()));
+        try {
+            console.log('\n2nd Token Name: ' + _token2.name)
+            const getAmountsOut = await uniswapRouterV2.getAmountsOut(amtToSwap, [flashAsset[0].address, _token2.address]);
+            // console.log('Swap 1 Received: ', ethers.utils.formatEther(getAmountsOut[1].toString()));
+            const getAmountsOut2 = await uniswapRouterV2.getAmountsOut(getAmountsOut[1], [_token2.address, WETH])
+            // console.log('Swap 2 Received: ', ethers.utils.formatEther(getAmountsOut2[1].toString()));
+            const getAmountsOut3 = await uniswapRouterV2.getAmountsOut(getAmountsOut2[1], [WETH, flashAsset[0].address])
+            // console.log('Swap 3 Received: ', ethers.utils.formatEther(getAmountsOut3[1].toString()));
 
-        // TODO: Include gas prices in profitable equation.
-        const profitable = amt < ethers.utils.formatEther(getAmountsOut3[1].toString());
-        console.log("Profitable?: ", profitable);
-        if (profitable) {
-            await swapFunc("0xFf795577d9AC8bD7D90Ee22b6C1703490b6512FD", _token2, WETH, amtToSwap)
+            // TODO: Include gas prices in profitable equation.
+            const profitable = amt < ethers.utils.formatEther(getAmountsOut3[1].toString());
+            console.log("Profitable?: ", profitable);
+            if (profitable) {
+                console.log('Profitable route discovered : ' + flashAsset[0].symbol +' -> '+ _token2.symbol + ' -> WETH -> ' + flashAsset[0].symbol )
+                console.log('Swap 1 Received: ', ethers.utils.formatEther(getAmountsOut[1].toString()) + ' '+ _token2.symbol);
+                console.log('Swap 2 Received: ', ethers.utils.formatEther(getAmountsOut2[1].toString()) + ' WETH');
+                console.log('Swap 3 Received: ', ethers.utils.formatEther(getAmountsOut3[1].toString()) + ' ' + flashAsset[0].symbol);
+                await swapFunc("0xFf795577d9AC8bD7D90Ee22b6C1703490b6512FD", _token2, WETH, amtToSwap)
+            }
+        } catch (error) {
+            console.log('Route not available...')
         }
     }
 
     async function swapFunc(_arg1, _arg2, _arg3, _arg4) {
-        console.log('running swap func......')
+        console.log('Attempting flash loan swap....')
         try {
             const tx = await flashLoanContract.myFlashLoanCall(_arg1, _arg2, _arg3, _arg4)
             console.log(tx)
             await tx.wait()
             console.log('Flashed Successfully!')
             console.log(tx.hash).
-            //Delete to keep finding oppurtunities
-            callback()
+                //Delete to keep finding oppurtunities
+                callback()
 
         } catch (error) {
-            console.log(error)
+            console.log('***************')
+            console.log('Flashloan Contract Execution Failed!\nMake sure you have deployed V2FlashLoan in the /contracts folder')
+            console.log('***************')
+
+            //Enable this logger to see true reason flashloan contract execution is failing. Can be for many reasons.
+            // console.log(error)
         }
     }
     main()
